@@ -22,7 +22,18 @@ PROJECT = Path(__file__).resolve().parents[3]
 SUITES_DIR = PROJECT / "evals" / "suites"
 AGENT_DEMO = PROJECT.parent
 
-MIMIC_DB = Path(os.environ.get("NL2SQL_MIMIC_DB", AGENT_DEMO / "m3_repro" / "db" / "mimic_iv.sqlite"))
+
+def _find_mimic_db() -> Path:
+    """NL2SQL_MIMIC_DB, else data/mimic_iv.sqlite (scripts/get_mimic_db.sh), else the m3_repro layout."""
+    if os.environ.get("NL2SQL_MIMIC_DB"):
+        return Path(os.environ["NL2SQL_MIMIC_DB"])
+    for candidate in (PROJECT / "data" / "mimic_iv.sqlite", AGENT_DEMO / "m3_repro" / "db" / "mimic_iv.sqlite"):
+        if candidate.exists():
+            return candidate
+    return PROJECT / "data" / "mimic_iv.sqlite"  # Database() reports it missing; run scripts/get_mimic_db.sh
+
+
+MIMIC_DB = _find_mimic_db()
 MIMIC_DATA = Path(os.environ.get("NL2SQL_MIMIC_DATA", AGENT_DEMO / "m3_repro" / "data"))
 BIRD_ROOT = Path(os.environ.get("NL2SQL_BIRD_ROOT", Path.home() / ".local" / "share" / "nl2sql" / "bird"))
 BIRD_DATABASES = BIRD_ROOT / "minidev" / "MINIDEV" / "dev_databases"

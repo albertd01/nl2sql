@@ -4,6 +4,24 @@ General natural-language-to-SQL demo agent. Works against any SQLAlchemy databas
 (tested: SQLite, Postgres), compares Gemma 4 31B, Qwen 3.8 27B and DeepSeek V4 Flash
 via OpenRouter at their highest served precision.
 
+## Run the demo
+
+Live chat demo: Open WebUI + Gemma 4 31B (OpenRouter) + this project's database tools over MCP,
+on the MIMIC-IV demo database. macOS or Linux; needs [uv](https://docs.astral.sh/uv/) and an
+[OpenRouter](https://openrouter.ai) API key.
+
+```bash
+git clone https://github.com/albertd01/nl2sql.git && cd nl2sql
+uv tool install --python 3.11 open-webui    # once, ~2 GB
+scripts/get_mimic_db.sh                     # once: MIMIC-IV demo database (37 MB) -> data/
+echo "OPENROUTER_API_KEY=sk-or-..." > .env
+openwebui/start.sh                          # starts everything and configures Open WebUI
+```
+
+Open http://127.0.0.1:8080 (no login) and pick one of the example questions. Stop with
+`openwebui/stop.sh`. Without any setup, `demo/sql_agent_demo.html` shows recorded runs of the
+same four questions in a browser.
+
 ## Setup
 
 Requires Python 3.13 and [uv](https://docs.astral.sh/uv/).
@@ -24,7 +42,8 @@ The agent works with any database URL. The examples, evaluation and demos use:
 
 | Data | Where the code looks | Override |
 |---|---|---|
-| MIMIC-IV demo in the EHRSQL SQLite format (dates shifted into the 2100s), plus the EHRSQL answerable/unanswerable question files — as used by the M3 paper reproduction | `../m3_repro/db/mimic_iv.sqlite`, `../m3_repro/data/` | `NL2SQL_MIMIC_DB`, `NL2SQL_MIMIC_DATA` |
+| MIMIC-IV demo database in EHRSQL 2024 format (dates shifted into the 2100s): `scripts/get_mimic_db.sh` downloads it from [EHRSQL 2024](https://github.com/glee4810/ehrsql-2024) (pinned commit, checksum-verified). Built from the [MIMIC-IV Clinical Database Demo 2.2](https://physionet.org/content/mimic-iv-demo/2.2/) (ODbL); EHRSQL's `preprocess/preprocess.sh` reproduces the same table contents | `data/mimic_iv.sqlite`, else `../m3_repro/db/mimic_iv.sqlite` | `NL2SQL_MIMIC_DB` |
+| EHRSQL answerable/unanswerable question files from the M3 paper reproduction (evaluation only) | `../m3_repro/data/` | `NL2SQL_MIMIC_DATA` |
 | BIRD mini-dev SQLite databases + canonical questions from Hugging Face (`birdsql/bird_mini_dev`) | `~/.local/share/nl2sql/bird` | `NL2SQL_BIRD_ROOT` |
 | Chinook sample database on a local Postgres | `scripts/chinook_postgres.sh start` | any SQLAlchemy URL |
 
@@ -32,11 +51,11 @@ The agent works with any database URL. The examples, evaluation and demos use:
 
 ```bash
 # Inspect what the agent sees
-uv run nl2sql schema --db sqlite:///../m3_repro/db/mimic_iv.sqlite
-uv run nl2sql schema --db sqlite:///../m3_repro/db/mimic_iv.sqlite --table admissions
+uv run nl2sql schema --db sqlite:///data/mimic_iv.sqlite
+uv run nl2sql schema --db sqlite:///data/mimic_iv.sqlite --table admissions
 
 # Ask one model, or all three in parallel
-uv run nl2sql ask --db sqlite:///../m3_repro/db/mimic_iv.sqlite \
+uv run nl2sql ask --db sqlite:///data/mimic_iv.sqlite \
   --reference-time "2100-12-31 23:59:00" --model all \
   "How many female patients were admitted as urgent this year?"
 
@@ -53,17 +72,14 @@ uv run nl2sql ask --db postgresql+psycopg://nl2sql_ro@127.0.0.1:55432/chinook --
 Open WebUI as the chat UI, Gemma via OpenRouter, and the agent's database tools served over MCP.
 Tool calls (inputs and results) show up inside the chat.
 
-```bash
-uv tool install --python 3.11 open-webui        # once; Open WebUI needs Python 3.11/3.12
-openwebui/start.sh                               # MCP server :8765 + Open WebUI :8080 (no login)
-UV_PROJECT_ENVIRONMENT=~/.venvs/nl2sql uv run python openwebui/configure.py   # once, idempotent
-open http://127.0.0.1:8080
-openwebui/stop.sh
-```
+Quick start: see [Run the demo](#run-the-demo). Details:
 
-- `start.sh` reads `OPENROUTER_API_KEY` from the environment, `nl2sql/.env` or `../m3_repro/.env`;
-  Open WebUI data lives in `~/.local/share/open-webui`, logs in `~/.local/share/nl2sql/logs`.
-- `configure.py` limits the connection to Gemma, creates the **SQL Agent · MIMIC-IV** preset
+- `start.sh` starts the MCP server (:8765) and Open WebUI (:8080, no login), waits until it is
+  ready and runs `openwebui/configure.py`. It reads `OPENROUTER_API_KEY` from the environment,
+  `.env` or `../m3_repro/.env`. Open WebUI data lives in `~/.local/share/open-webui`, logs in
+  `~/.local/share/nl2sql/logs`, the project virtualenv in `$UV_PROJECT_ENVIRONMENT` or
+  `~/.venvs/nl2sql`.
+- `configure.py` (idempotent) limits the connection to Gemma, creates the **SQL Agent · MIMIC-IV** preset
   (chat system prompt from `nl2sql prompt --chat`, native tool calling, MCP tools on by default,
   bf16 provider pin via `custom_params`, the 4 demo questions as starters) and makes it the default.
 - Open WebUI runs the tool loop here, not `nl2sql.agent`: same tools and prompt rules, but no

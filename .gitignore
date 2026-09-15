@@ -16,3 +16,6 @@ runs/
 
 # Eval suites are generated
 evals/suites/
+
+# Downloaded databases (scripts/get_mimic_db.sh)
+data/
