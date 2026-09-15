@@ -10,6 +10,7 @@ Idempotent. It:
 """
 from __future__ import annotations
 
+import os
 import sys
 
 import httpx
@@ -19,7 +20,7 @@ from nl2sql.agent.prompts import build_system_prompt
 from nl2sql.db import Database, build_schema_card
 from nl2sql.eval.datasets import EHRSQL_NOW, MIMIC_DB
 
-BASE = "http://127.0.0.1:8080"
+BASE = os.environ.get("NL2SQL_OW_URL", "http://127.0.0.1:8080")
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 PRESET_ID = "sql-agent-mimic"
 TOOL_ID = "server:mcp:mimic"  # matches info.id in start.sh's TOOL_SERVER_CONNECTIONS
