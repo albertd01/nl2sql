@@ -1,0 +1,538 @@
+<title>SQL Agent on MIMIC-IV</title>
+<meta name="description" content="Four natural-language questions answered by a text-to-SQL agent, with every tool call it made.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+  :root {
+    --ground: #f2f5f4;
+    --surface: #ffffff;
+    --surface-sunk: #e9eeec;
+    --ink: #16211f;
+    --ink-soft: #3c4a47;
+    --muted: #62716d;
+    --line: #d3dcd9;
+    --accent: #0b6b63;
+    --accent-soft: #d9ece9;
+    --marker: #f5e79b;
+    --marker-ink: #3d3300;
+    --ok: #26734a;
+    --ok-soft: #dcefe3;
+    --decline: #9a5a08;
+    --decline-soft: #f6e8d2;
+    --kw: #0b6b63;
+    --shadow: 0 1px 2px rgb(22 33 31 / 0.06), 0 8px 24px rgb(22 33 31 / 0.07);
+
+    --f-serif: "Newsreader", "Iowan Old Style", Georgia, serif;
+    --f-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --f-cond: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --f-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1413;
+      --surface: #151d1c;
+      --surface-sunk: #1b2524;
+      --ink: #e1eae7;
+      --ink-soft: #c1ceca;
+      --muted: #8d9e9a;
+      --line: #273331;
+      --accent: #5cc0b4;
+      --accent-soft: #173331;
+      --marker: #4b4418;
+      --marker-ink: #f6ecb8;
+      --ok: #6fcf97;
+      --ok-soft: #173024;
+      --decline: #e3a857;
+      --decline-soft: #33261a;
+      --kw: #6fc7bc;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1413;
+    --surface: #151d1c;
+    --surface-sunk: #1b2524;
+    --ink: #e1eae7;
+    --ink-soft: #c1ceca;
+    --muted: #8d9e9a;
+    --line: #273331;
+    --accent: #5cc0b4;
+    --accent-soft: #173331;
+    --marker: #4b4418;
+    --marker-ink: #f6ecb8;
+    --ok: #6fcf97;
+    --ok-soft: #173024;
+    --decline: #e3a857;
+    --decline-soft: #33261a;
+    --kw: #6fc7bc;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 8px 24px rgb(0 0 0 / 0.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 400 15px/1.55 var(--f-sans);
+    padding: 32px 20px 56px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; display: grid; gap: 28px; }
+
+  /* Header */
+  header { display: grid; gap: 10px; }
+  .eyebrow {
+    font: 600 12px/1.2 var(--f-cond);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    margin: 0;
+    font: 600 clamp(1.9rem, 1.4rem + 1.6vw, 2.6rem)/1.1 var(--f-cond);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .lede { margin: 0; max-width: 68ch; color: var(--ink-soft); font-size: 1rem; }
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 22px;
+    margin: 6px 0 0; padding: 0;
+    font-size: 13px; color: var(--muted);
+  }
+  .meta div { display: flex; gap: 6px; }
+  .meta dt { font: 600 11px/1.9 var(--f-cond); letter-spacing: 0.08em; text-transform: uppercase; }
+  .meta dd { margin: 0; color: var(--ink-soft); }
+
+  /* Question tabs */
+  .tabs {
+    display: grid; gap: 10px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .tab {
+    display: grid; gap: 8px; align-content: start;
+    text-align: left; cursor: pointer;
+    padding: 14px 16px 12px;
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font: inherit;
+    transition: border-color 120ms ease, background-color 120ms ease;
+  }
+  .tab:hover { border-color: var(--muted); }
+  .tab[aria-selected="true"] {
+    background: var(--surface);
+    border-color: var(--accent);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .tab:focus-visible, .expand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tab-kicker { font: 600 11px/1.3 var(--f-cond); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .tab[aria-selected="true"] .tab-kicker { color: var(--accent); }
+  .tab-q { font: 400 1.02rem/1.35 var(--f-serif); text-wrap: pretty; }
+  .tab-foot { display: flex; align-items: center; gap: 8px; font: 500 12px/1 var(--f-mono); color: var(--muted); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 9px 4px 8px; border-radius: 999px;
+    font: 600 11px/1 var(--f-cond); letter-spacing: 0.07em; text-transform: uppercase;
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill.answered { color: var(--ok); background: var(--ok-soft); }
+  .pill.unanswerable { color: var(--decline); background: var(--decline-soft); }
+  .pill.failed { color: var(--decline); background: var(--decline-soft); }
+
+  /* Run panel */
+  .question {
+    margin: 0;
+    font: 400 clamp(1.45rem, 1.2rem + 0.9vw, 1.9rem)/1.25 var(--f-serif);
+    text-wrap: balance;
+    max-width: 40ch;
+  }
+  .question::before { content: "“"; color: var(--muted); }
+  .question::after { content: "”"; color: var(--muted); }
+  .note { margin: 8px 0 0; max-width: 72ch; color: var(--ink-soft); }
+  .panel { display: grid; gap: 22px; }
+  .columns { display: grid; gap: 28px; grid-template-columns: minmax(0, 1.12fr) minmax(0, 1fr); align-items: start; }
+
+  .col-label {
+    margin: 0 0 12px;
+    font: 600 12px/1.2 var(--f-cond); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  .col-label span:last-child { font: 500 12px/1.2 var(--f-mono); letter-spacing: 0; text-transform: none; }
+
+  /* Trace */
+  .trace { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+  .step { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 0 14px; position: relative; padding-bottom: 18px; }
+  .step:not(:last-child)::before {
+    content: ""; position: absolute; left: 14px; top: 30px; bottom: 0; width: 1px; background: var(--line);
+  }
+  .step-num {
+    width: 30px; height: 30px; border-radius: 50%;
+    display: grid; place-items: center;
+    font: 600 12px/1 var(--f-mono);
+    color: var(--accent); background: var(--accent-soft);
+  }
+  .step.is-error .step-num { color: var(--decline); background: var(--decline-soft); }
+  .step-body { display: grid; gap: 8px; min-width: 0; padding-top: 4px; }
+  .step-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+  .tool { font: 600 14px/1.3 var(--f-mono); color: var(--ink); }
+  .tool-args { font: 400 13px/1.4 var(--f-mono); color: var(--muted); overflow-wrap: anywhere; }
+  .step-time { margin-left: auto; font: 400 12px/1.3 var(--f-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .model-text { margin: 0; font: italic 400 1rem/1.45 var(--f-serif); color: var(--ink-soft); }
+
+  .returned { display: grid; gap: 6px; }
+  .returned-label { font: 600 10.5px/1.2 var(--f-cond); letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: 400 12.5px/1.3 var(--f-mono);
+    padding: 3px 7px; border-radius: 4px;
+    background: var(--marker); color: var(--marker-ink);
+  }
+  .chip small { font-size: 11px; opacity: 0.75; margin-left: 4px; }
+  .plain { margin: 0; font: 400 13px/1.5 var(--f-mono); color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  pre.sql {
+    margin: 0; padding: 12px 14px;
+    background: var(--surface-sunk); border-radius: 8px;
+    font: 400 13px/1.6 var(--f-mono); color: var(--ink);
+    overflow-x: auto; white-space: pre;
+  }
+  pre.sql .kw { color: var(--kw); font-weight: 600; }
+  pre.sql mark { background: var(--marker); color: var(--marker-ink); padding: 0 2px; border-radius: 3px; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { border-collapse: collapse; width: 100%; font: 400 13px/1.4 var(--f-mono); font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font: 600 11px/1.3 var(--f-cond); letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); background: var(--surface-sunk); }
+  tr:last-child td { border-bottom: 0; }
+  td.num { text-align: right; }
+  .more { font: 400 12px/1.4 var(--f-mono); color: var(--muted); }
+  .expand {
+    justify-self: start; cursor: pointer; background: none; border: 0; padding: 0;
+    font: 500 12px/1.4 var(--f-mono); color: var(--accent); text-decoration: underline; text-underline-offset: 3px;
+  }
+
+  /* Output */
+  .output {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 20px 22px 18px;
+    display: grid; gap: 18px;
+  }
+  .answer { margin: 0; font: 400 1.4rem/1.35 var(--f-serif); text-wrap: pretty; }
+  .out-block { display: grid; gap: 8px; }
+  .stats {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    margin: 0; padding-top: 14px; border-top: 1px solid var(--line);
+  }
+  .stats div { display: grid; gap: 2px; }
+  .stats dt { font: 600 10.5px/1.2 var(--f-cond); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .stats dd { margin: 0; font: 500 14px/1.3 var(--f-mono); font-variant-numeric: tabular-nums; }
+
+  footer { color: var(--muted); font-size: 13px; max-width: 90ch; display: grid; gap: 6px; }
+  footer code { font: 400 12px/1.4 var(--f-mono); color: var(--ink-soft); }
+
+  @media (max-width: 960px) {
+    .columns { grid-template-columns: minmax(0, 1fr); }
+    .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    body { padding: 22px 16px 40px; }
+    .tabs { grid-template-columns: minmax(0, 1fr); }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .step-time { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) { .tab { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Text-to-SQL agent · recorded runs</div>
+    <h1>Asking a hospital database questions in plain English</h1>
+    <p class="lede">The agent reads the question, inspects the schema, looks up how values are actually stored, writes SQL, runs it, and answers — or says so when the data isn’t there. Each run below is a real recording, shown step by step.</p>
+    <dl class="meta" id="meta"></dl>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Demo questions" id="tabs"></nav>
+
+  <section class="panel" id="panel" role="tabpanel" aria-live="polite"></section>
+
+  <footer>
+    <div>MIMIC-IV shifts every date into the 2100s to protect patient privacy, so the agent treats <code id="reftime"></code> as “now”. The demo subset has <span id="tables"></span> tables and about a hundred patients.</div>
+    <div>Agent settings: <code id="config"></code> · Recorded <span id="recorded"></span></div>
+  </footer>
+</div>
+
+<script type="application/json" id="traces">{"recorded_at": "2026-09-15 18:04", "model": "Gemma 4 31B (bf16)", "model_id": "google/gemma-4-31b-it", "config": "force_final+self_check+abstain_rule_v2", "database": "MIMIC-IV clinical database demo (SQLite)", "reference_time": "2100-12-31 23:59:00", "tables": 17, "runs": [{"id": "er_women", "title": "Matching how values are stored", "question": "How many female patients were admitted through the ER?", "status": "answered", "answer": "There were 24 female patients admitted through the emergency room.", "sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'", "steps": [{"kind": "tool", "tool": "search_values", "args": {"column": "admission_location", "table": "admissions", "term": "emergency room"}, "ok": true, "output": "Substring matches in admissions.admission_location for 'emergency room':\n  \"emergency room\"  (59 rows)", "elapsed_ms": 2, "self_check": null}, {"kind": "tool", "tool": "run_query", "args": {"sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'"}, "ok": true, "output": "1 row(s), 1 ms.\ncount(DISTINCT p.subject_id)\n24", "elapsed_ms": 12, "self_check": null}, {"kind": "tool", "tool": "final_answer", "args": {"answer": "There were 24 female patients admitted through the emergency room.", "sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'", "status": "answered"}, "ok": true, "output": "Answer recorded.", "elapsed_ms": 1, "self_check": null}], "result": {"columns": ["count(DISTINCT p.subject_id)"], "rows": [[24]], "truncated": false}, "tool_calls": 3, "turns": 3, "elapsed_s": 7.38, "tokens": 21193, "cost_usd": 0.00217, "providers": ["Venice"], "error": null}, {"id": "labs", "title": "Joining and ranking", "question": "Which 5 lab tests were performed most often, and how many times each?", "status": "answered", "answer": "The 5 lab tests performed most often were glucose (1,113 times), chloride (1,004 times), sodium (1,001 times), hemoglobin (985 times), and hematocrit (982 times).", "sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;", "steps": [{"kind": "tool", "tool": "run_query", "args": {"sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;"}, "ok": true, "output": "5 row(s), 55 ms.\nlabel | count\nglucose | 1113\nchloride | 1004\nsodium | 1001\nhemoglobin | 985\nhematocrit | 982", "elapsed_ms": 59, "self_check": null}, {"kind": "tool", "tool": "final_answer", "args": {"answer": "The 5 lab tests performed most often were glucose (1,113 times), chloride (1,004 times), sodium (1,001 times), hemoglobin (985 times), and hematocrit (982 times).", "sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;", "status": "answered"}, "ok": true, "output": "Answer recorded.", "elapsed_ms": 25, "self_check": null}], "result": {"columns": ["label", "count"], "rows": [["glucose", 1113], ["chloride", 1004], ["sodium", 1001], ["hemoglobin", 985], ["hematocrit", 982]], "truncated": false}, "tool_calls": 2, "turns": 2, "elapsed_s": 5.15, "tokens": 14196, "cost_usd": 0.00154, "providers": ["Venice"], "error": null}, {"id": "afib_icu", "title": "Several tables and date math", "question": "What is the average ICU stay in days for patients diagnosed with atrial fibrillation?", "status": "answered", "answer": "The average ICU stay for patients diagnosed with atrial fibrillation is approximately 4.09 days.", "sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)", "steps": [{"kind": "tool", "tool": "search_values", "args": {"column": "long_title", "table": "d_icd_diagnoses", "term": "atrial fibrillation"}, "ok": true, "output": "Substring matches in d_icd_diagnoses.long_title for 'atrial fibrillation':\n  \"unspecified atrial fibrillation and atrial flutter\"  (1 rows)\n  \"unspecified atrial fibrillation\"  (1 rows)\n  \"persistent atrial fibrillation\"  (1 rows)\n  \"permanent atrial fibrillation\"  (1 rows)\n  \"paroxysmal atrial fibrillation\"  (1 rows)\n  \"other persistent atrial fibrillation\"  (1 rows)\n  \"longstanding persistent atrial fibrillation\"  (1 rows)\n  \"chronic atrial fibrillation, unspecified\"  (1 rows)\n  \"chronic atrial fibrillation\"  (1 rows)\n  \"atrial fibrillation and flutter\"  (1 rows)\n  \"atrial fibrillation\"  (1 rows)", "elapsed_ms": 170, "self_check": null}, {"kind": "tool", "tool": "run_query", "args": {"sql": "SELECT icd_code FROM d_icd_diagnoses WHERE long_title LIKE '%atrial fibrillation%'"}, "ok": true, "output": "11 row(s), 40 ms.\nicd_code\nicd9|42731\nicd10|i4820\nicd10|i482\nicd10|i48\nicd10|i4811\nicd10|i4891\nicd10|i489\nicd10|i4821\nicd10|i4819\nicd10|i480\nicd10|i481", "elapsed_ms": 42, "self_check": null}, {"kind": "tool", "tool": "run_query", "args": {"sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)"}, "ok": true, "output": "1 row(s), 37 ms.\navg_stay_days\n4.091421441000421", "elapsed_ms": 42, "self_check": null}, {"kind": "tool", "tool": "final_answer", "args": {"answer": "The average ICU stay for patients diagnosed with atrial fibrillation is approximately 4.09 days.", "sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)", "status": "answered"}, "ok": true, "output": "Answer recorded.", "elapsed_ms": 36, "self_check": null}], "result": {"columns": ["avg_stay_days"], "rows": [[4.091421441000421]], "truncated": false}, "tool_calls": 4, "turns": 4, "elapsed_s": 13.17, "tokens": 29202, "cost_usd": 0.00273, "providers": ["Venice"], "error": null}, {"id": "phone", "title": "Knowing when to say no", "question": "What is the phone number of the doctor who treated patient 10004235?", "status": "unanswerable", "answer": "The database does not contain any information about doctors or their phone numbers.", "sql": null, "steps": [{"kind": "tool", "tool": "list_tables", "args": {}, "ok": true, "output": "- admissions (119 rows): row_id, subject_id, hadm_id, admittime, dischtime, admission_type, admission_location, discharge_location, insurance, language, marital_status, age\n- chartevents (31,926 rows): row_id, subject_id, hadm_id, stay_id, itemid, charttime, valuenum, valueuom\n- cost (33,720 rows): row_id, subject_id, hadm_id, event_type, event_id, chargetime, cost\n- d_icd_diagnoses (106,308 rows): row_id, icd_code, long_title\n- d_icd_procedures (85,254 rows): row_id, icd_code, long_title\n- d_items (3,522 rows): row_id, itemid, label, abbreviation, linksto\n- d_labitems (1,594 rows): row_id, itemid, label\n- diagnoses_icd (1,561 rows): row_id, subject_id, hadm_id, icd_code, charttime\n- icustays (88 rows): row_id, subject_id, hadm_id, stay_id, first_careunit, last_careunit, intime, outtime\n- inputevents (9,000 rows): row_id, subject_id, hadm_id, stay_id, starttime, itemid, totalamount, totalamountuom\n- labevents (26,426 rows): row_id, subject_id, hadm_id, itemid, charttime, valuenum, valueuom\n- microbiologyevents (1,060 rows): row_id, subject_id, hadm_id, charttime, spec_type_desc, test_name, org_name\n- outputevents (5,292 rows): row_id, subject_id, hadm_id, stay_id, charttime, itemid, value, valueuom\n- patients (94 rows): row_id, subject_id, gender, dob, dod\n- prescriptions (5,354 rows): row_id, subject_id, hadm_id, starttime, stoptime, drug, dose_val_rx, dose_unit_rx, route\n- procedures_icd (379 rows): row_id, subject_id, hadm_id, icd_code, charttime\n- transfers (515 rows): row_id, subject_id, hadm_id, transfer_id, eventtype, careunit, intime, outtime", "elapsed_ms": 0, "self_check": null}, {"kind": "tool", "tool": "final_answer", "args": {"answer": "The database does not contain any information about doctors or their phone numbers.", "sql": null, "status": "unanswerable"}, "ok": true, "output": "Answer recorded.", "elapsed_ms": 0, "self_check": null}], "result": null, "tool_calls": 2, "turns": 2, "elapsed_s": 2.54, "tokens": 14559, "cost_usd": 0.00135, "providers": ["Venice"], "error": null}]}</script>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById("traces").textContent);
+  const runs = data.runs;
+
+  // What each recording demonstrates. Kept here (not in the recorder) because it describes
+  // this specific recording; re-check it after re-recording.
+  const NOTES = {
+    er_women: "Neither “ER” nor “female” is how the data is stored. The agent looks up the stored value 'emergency room' and uses the gender code 'f' listed in the schema.",
+    labs: "Lab measurements only carry an item ID; the test names live in a separate dictionary table, so the agent joins the two before counting.",
+    afib_icu: "Atrial fibrillation is recorded under 11 different ICD-9 and ICD-10 codes. The agent finds all of them before averaging the ICU stays.",
+    phone: "No table records doctors or phone numbers. After checking the tables, the agent declines instead of guessing.",
+  };
+  const STATUS_LABEL = { answered: "Answered", unanswerable: "Declined", failed: "Failed" };
+  const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|JOIN|LEFT|INNER|ON|AND|OR|NOT|GROUP BY|ORDER BY|LIMIT|AS|IN|COUNT|AVG|SUM|MIN|MAX|DISTINCT|DESC|ASC|LIKE|WITH|HAVING|CASE|WHEN|THEN|ELSE|END|IS|NULL|julianday)\b/gi;
+  const BREAK_BEFORE = /\s+(?=\b(FROM|WHERE|JOIN|LEFT JOIN|INNER JOIN|GROUP BY|ORDER BY|LIMIT|HAVING)\b)/gi;
+
+  const el = (tag, cls, text) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  };
+  const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function sqlHtml(sql) {
+    // Split into string literals and code; only code gets line breaks and keyword colour,
+    // literals get the "found in the data" marker.
+    const parts = sql.trim().replace(/;\s*$/, "").split(/('(?:[^']|'')*')/);
+    const multiline = sql.includes("\n");
+    return parts.map((part, i) => {
+      if (i % 2 === 1) return "<mark>" + escapeHtml(part) + "</mark>";
+      let code = multiline ? part : part.replace(BREAK_BEFORE, "\n");
+      return escapeHtml(code).replace(SQL_KEYWORDS, '<span class="kw">$1</span>');
+    }).join("");
+  }
+
+  function fmtNumber(v) {
+    if (typeof v !== "number") return v;
+    return Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  }
+
+  function tableNode(columns, rows, limit) {
+    const wrap = el("div", "table-wrap");
+    const table = el("table");
+    const thead = el("thead"); const hr = el("tr");
+    columns.forEach((c) => hr.appendChild(el("th", null, c)));
+    thead.appendChild(hr); table.appendChild(thead);
+    const tbody = el("tbody");
+    rows.slice(0, limit).forEach((row) => {
+      const tr = el("tr");
+      row.forEach((v) => {
+        const numeric = typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v));
+        const shown = typeof v === "string" && /^-?\d+\.\d{3,}$/.test(v) ? fmtNumber(parseFloat(v)) : fmtNumber(v);
+        tr.appendChild(el("td", numeric ? "num" : null, v == null ? "NULL" : String(shown)));
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody); wrap.appendChild(table);
+    return wrap;
+  }
+
+  function parseQueryOutput(text) {
+    const lines = text.split("\n");
+    const head = lines[0];
+    const body = lines.slice(1).filter((l) => l.trim() && !/^WARNING|^… \(output truncated\)/.test(l));
+    if (!body.length) return { head, columns: [], rows: [] };
+    return { head, columns: body[0].split(" | "), rows: body.slice(1).map((l) => l.split(" | ")) };
+  }
+
+  function argsSummary(step) {
+    const a = step.args || {};
+    switch (step.tool) {
+      case "search_values": return `${a.table}.${a.column} ∋ "${a.term}"`;
+      case "describe_table": return a.table;
+      case "final_answer": return `status: ${a.status}`;
+      default: return "";
+    }
+  }
+
+  function returnedNode(step) {
+    const box = el("div", "returned");
+    const out = step.output || "";
+    if (step.tool === "search_values") {
+      box.appendChild(el("div", "returned-label", "Stored values found"));
+      const chips = el("div", "chips");
+      const matches = out.split("\n").slice(1).map((l) => l.match(/^\s*"(.*)"\s*(?:\((.*)\))?\s*$/)).filter(Boolean);
+      if (!matches.length) box.appendChild(el("p", "plain", out));
+      matches.slice(0, 12).forEach((m) => {
+        const chip = el("span", "chip", m[1]);
+        if (m[2]) chip.appendChild(el("small", null, m[2] === "1 rows" ? "1 row" : m[2]));
+        chips.appendChild(chip);
+      });
+      if (matches.length > 12) chips.appendChild(el("span", "more", `+${matches.length - 12} more`));
+      if (matches.length) box.appendChild(chips);
+      return box;
+    }
+    if (step.tool === "run_query" && step.ok) {
+      const parsed = parseQueryOutput(out);
+      box.appendChild(el("div", "returned-label", "Returned · " + parsed.head.replace(/\.$/, "").replace("row(s)", "rows")));
+      if (parsed.columns.length) {
+        const LIMIT = 6;
+        const table = tableNode(parsed.columns, parsed.rows, LIMIT);
+        box.appendChild(table);
+        if (parsed.rows.length > LIMIT) {
+          const btn = el("button", "expand", `Show all ${parsed.rows.length} rows`);
+          btn.type = "button";
+          btn.addEventListener("click", () => {
+            box.replaceChild(tableNode(parsed.columns, parsed.rows, parsed.rows.length), table);
+            btn.remove();
+          });
+          box.appendChild(btn);
+        }
+      }
+      return box;
+    }
+    if (step.tool === "final_answer") return null;
+    if (step.tool === "list_tables") {
+      box.appendChild(el("div", "returned-label", "Tables in the database"));
+      const chips = el("div", "chips");
+      out.split("\n").map((l) => l.match(/^- (\w+)/)).filter(Boolean).forEach((m) => {
+        const chip = el("span", "chip", m[1]);
+        chips.appendChild(chip);
+      });
+      box.appendChild(chips);
+      return box;
+    }
+    box.appendChild(el("div", "returned-label", "Returned"));
+    box.appendChild(el("p", "plain", out.length > 600 ? out.slice(0, 600) + "…" : out));
+    return box;
+  }
+
+  function traceNode(run) {
+    const list = el("ol", "trace");
+    let n = 0;
+    run.steps.forEach((step) => {
+      const li = el("li", "step" + (step.kind === "error" || step.ok === false ? " is-error" : ""));
+      if (step.kind === "tool") n += 1;
+      const num = el("div", "step-num", step.kind === "tool" ? String(n) : "·");
+      const body = el("div", "step-body");
+      if (step.kind === "model_text") {
+        body.appendChild(el("p", "model-text", step.output));
+      } else if (step.kind === "error") {
+        body.appendChild(el("p", "plain", step.output));
+      } else {
+        const head = el("div", "step-head");
+        head.appendChild(el("span", "tool", step.tool));
+        const summary = argsSummary(step);
+        if (summary) head.appendChild(el("span", "tool-args", summary));
+        head.appendChild(el("span", "step-time", step.elapsed_ms + " ms"));
+        body.appendChild(head);
+        if (step.tool === "run_query" && step.args && step.args.sql) {
+          const pre = el("pre", "sql");
+          pre.innerHTML = sqlHtml(step.args.sql);
+          body.appendChild(pre);
+        }
+        const ret = returnedNode(step);
+        if (ret) body.appendChild(ret);
+        if (step.self_check && step.self_check.length) {
+          body.appendChild(el("p", "plain", "Self-check sent the answer back: " + step.self_check.join(", ")));
+        }
+      }
+      li.appendChild(num); li.appendChild(body);
+      list.appendChild(li);
+    });
+    return list;
+  }
+
+  function outputNode(run) {
+    const card = el("div", "output");
+    card.appendChild(el("span", "pill " + run.status, STATUS_LABEL[run.status] || run.status));
+    card.appendChild(el("p", "answer", run.answer || run.error || "No answer"));
+
+    if (run.sql) {
+      const block = el("div", "out-block");
+      block.appendChild(el("div", "returned-label", "Final SQL"));
+      const pre = el("pre", "sql");
+      pre.innerHTML = sqlHtml(run.sql);
+      block.appendChild(pre);
+      card.appendChild(block);
+    }
+    if (run.result && run.result.columns) {
+      const block = el("div", "out-block");
+      block.appendChild(el("div", "returned-label", "Result" + (run.result.truncated ? " · first " + run.result.rows.length + " rows" : "")));
+      block.appendChild(tableNode(run.result.columns, run.result.rows, run.result.rows.length));
+      card.appendChild(block);
+    }
+
+    const stats = el("dl", "stats");
+    const tokens = run.tokens >= 1000 ? (run.tokens / 1000).toFixed(1) + "k" : String(run.tokens);
+    [["Tool calls", String(run.tool_calls)], ["Time", run.elapsed_s.toFixed(1) + " s"], ["Tokens", tokens], ["Cost", "$" + run.cost_usd.toFixed(4)]]
+      .forEach(([k, v]) => { const d = el("div"); d.appendChild(el("dt", null, k)); d.appendChild(el("dd", null, v)); stats.appendChild(d); });
+    card.appendChild(stats);
+    return card;
+  }
+
+  function renderPanel(run) {
+    const panel = document.getElementById("panel");
+    panel.replaceChildren();
+    panel.setAttribute("aria-labelledby", "tab-" + run.id);
+    const intro = el("div");
+    intro.appendChild(el("p", "question", run.question));
+    if (NOTES[run.id]) intro.appendChild(el("p", "note", NOTES[run.id]));
+    panel.appendChild(intro);
+
+    const cols = el("div", "columns");
+    const left = el("div");
+    const leftLabel = el("h2", "col-label");
+    leftLabel.appendChild(el("span", null, "What the agent did"));
+    leftLabel.appendChild(el("span", null, run.tool_calls + " tool calls"));
+    left.appendChild(leftLabel);
+    left.appendChild(traceNode(run));
+
+    const right = el("div");
+    const rightLabel = el("h2", "col-label");
+    rightLabel.appendChild(el("span", null, "Output"));
+    right.appendChild(rightLabel);
+    right.appendChild(outputNode(run));
+
+    cols.appendChild(left); cols.appendChild(right);
+    panel.appendChild(cols);
+  }
+
+  function select(id, focus) {
+    const run = runs.find((r) => r.id === id) || runs[0];
+    document.querySelectorAll(".tab").forEach((t) => {
+      const on = t.dataset.id === run.id;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      if (on && focus) t.focus();
+    });
+    renderPanel(run);
+    try { history.replaceState(null, "", "#" + run.id); } catch (e) { /* sandboxed history */ }
+  }
+
+  // Header meta
+  const meta = document.getElementById("meta");
+  [["Model", data.model.replace(" (bf16)", "") + " via OpenRouter"], ["Database", data.database], ["Questions", String(runs.length)]]
+    .forEach(([k, v]) => { const d = el("div"); d.appendChild(el("dt", null, k)); d.appendChild(el("dd", null, v)); meta.appendChild(d); });
+  document.getElementById("reftime").textContent = data.reference_time;
+  document.getElementById("tables").textContent = data.tables;
+  document.getElementById("config").textContent = data.config;
+  document.getElementById("recorded").textContent = data.recorded_at;
+
+  // Tabs
+  const tabs = document.getElementById("tabs");
+  runs.forEach((run) => {
+    const b = el("button", "tab");
+    b.type = "button"; b.id = "tab-" + run.id; b.dataset.id = run.id;
+    b.setAttribute("role", "tab"); b.setAttribute("aria-controls", "panel");
+    b.appendChild(el("span", "tab-kicker", run.title));
+    b.appendChild(el("span", "tab-q", run.question));
+    const foot = el("span", "tab-foot");
+    foot.appendChild(el("span", "pill " + run.status, STATUS_LABEL[run.status] || run.status));
+    foot.appendChild(el("span", null, run.tool_calls + " calls · " + run.elapsed_s.toFixed(1) + " s"));
+    b.appendChild(foot);
+    b.addEventListener("click", () => select(run.id));
+    b.addEventListener("keydown", (e) => {
+      const i = runs.indexOf(run);
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); select(runs[(i + 1) % runs.length].id, true); }
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); select(runs[(i - 1 + runs.length) % runs.length].id, true); }
+    });
+    tabs.appendChild(b);
+  });
+
+  select((location.hash || "").slice(1));
+})();
+</script>

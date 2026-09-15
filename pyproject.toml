@@ -1,0 +1,31 @@
+[project]
+name = "nl2sql"
+version = "0.1.0"
+description = "General natural-language-to-SQL demo agent"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "albertd01", email = "133644478+albertd01@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp>=2.2.0",
+    "psycopg[binary]>=3.3.5",
+    "python-dotenv>=1.2.3",
+    "rapidfuzz>=3.14.6",
+    "sqlalchemy>=2.0.53",
+    "sqlglot>=30.18.0",
+]
+
+[project.scripts]
+nl2sql = "nl2sql.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

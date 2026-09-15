@@ -1,0 +1,270 @@
+{
+  "recorded_at": "2026-09-15 18:04",
+  "model": "Gemma 4 31B (bf16)",
+  "model_id": "google/gemma-4-31b-it",
+  "config": "force_final+self_check+abstain_rule_v2",
+  "database": "MIMIC-IV clinical database demo (SQLite)",
+  "reference_time": "2100-12-31 23:59:00",
+  "tables": 17,
+  "runs": [
+    {
+      "id": "er_women",
+      "title": "Matching how values are stored",
+      "question": "How many female patients were admitted through the ER?",
+      "status": "answered",
+      "answer": "There were 24 female patients admitted through the emergency room.",
+      "sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'",
+      "steps": [
+        {
+          "kind": "tool",
+          "tool": "search_values",
+          "args": {
+            "column": "admission_location",
+            "table": "admissions",
+            "term": "emergency room"
+          },
+          "ok": true,
+          "output": "Substring matches in admissions.admission_location for 'emergency room':\n  \"emergency room\"  (59 rows)",
+          "elapsed_ms": 2,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "run_query",
+          "args": {
+            "sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'"
+          },
+          "ok": true,
+          "output": "1 row(s), 1 ms.\ncount(DISTINCT p.subject_id)\n24",
+          "elapsed_ms": 12,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "final_answer",
+          "args": {
+            "answer": "There were 24 female patients admitted through the emergency room.",
+            "sql": "SELECT count(DISTINCT p.subject_id) FROM patients p JOIN admissions a ON p.subject_id = a.subject_id WHERE p.gender = 'f' AND a.admission_location = 'emergency room'",
+            "status": "answered"
+          },
+          "ok": true,
+          "output": "Answer recorded.",
+          "elapsed_ms": 1,
+          "self_check": null
+        }
+      ],
+      "result": {
+        "columns": [
+          "count(DISTINCT p.subject_id)"
+        ],
+        "rows": [
+          [
+            24
+          ]
+        ],
+        "truncated": false
+      },
+      "tool_calls": 3,
+      "turns": 3,
+      "elapsed_s": 7.38,
+      "tokens": 21193,
+      "cost_usd": 0.00217,
+      "providers": [
+        "Venice"
+      ],
+      "error": null
+    },
+    {
+      "id": "labs",
+      "title": "Joining and ranking",
+      "question": "Which 5 lab tests were performed most often, and how many times each?",
+      "status": "answered",
+      "answer": "The 5 lab tests performed most often were glucose (1,113 times), chloride (1,004 times), sodium (1,001 times), hemoglobin (985 times), and hematocrit (982 times).",
+      "sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;",
+      "steps": [
+        {
+          "kind": "tool",
+          "tool": "run_query",
+          "args": {
+            "sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;"
+          },
+          "ok": true,
+          "output": "5 row(s), 55 ms.\nlabel | count\nglucose | 1113\nchloride | 1004\nsodium | 1001\nhemoglobin | 985\nhematocrit | 982",
+          "elapsed_ms": 59,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "final_answer",
+          "args": {
+            "answer": "The 5 lab tests performed most often were glucose (1,113 times), chloride (1,004 times), sodium (1,001 times), hemoglobin (985 times), and hematocrit (982 times).",
+            "sql": "SELECT t2.label, COUNT(*) as count\nFROM labevents t1\nJOIN d_labitems t2 ON t1.itemid = t2.itemid\nGROUP BY t2.label\nORDER BY count DESC\nLIMIT 5;",
+            "status": "answered"
+          },
+          "ok": true,
+          "output": "Answer recorded.",
+          "elapsed_ms": 25,
+          "self_check": null
+        }
+      ],
+      "result": {
+        "columns": [
+          "label",
+          "count"
+        ],
+        "rows": [
+          [
+            "glucose",
+            1113
+          ],
+          [
+            "chloride",
+            1004
+          ],
+          [
+            "sodium",
+            1001
+          ],
+          [
+            "hemoglobin",
+            985
+          ],
+          [
+            "hematocrit",
+            982
+          ]
+        ],
+        "truncated": false
+      },
+      "tool_calls": 2,
+      "turns": 2,
+      "elapsed_s": 5.15,
+      "tokens": 14196,
+      "cost_usd": 0.00154,
+      "providers": [
+        "Venice"
+      ],
+      "error": null
+    },
+    {
+      "id": "afib_icu",
+      "title": "Several tables and date math",
+      "question": "What is the average ICU stay in days for patients diagnosed with atrial fibrillation?",
+      "status": "answered",
+      "answer": "The average ICU stay for patients diagnosed with atrial fibrillation is approximately 4.09 days.",
+      "sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)",
+      "steps": [
+        {
+          "kind": "tool",
+          "tool": "search_values",
+          "args": {
+            "column": "long_title",
+            "table": "d_icd_diagnoses",
+            "term": "atrial fibrillation"
+          },
+          "ok": true,
+          "output": "Substring matches in d_icd_diagnoses.long_title for 'atrial fibrillation':\n  \"unspecified atrial fibrillation and atrial flutter\"  (1 rows)\n  \"unspecified atrial fibrillation\"  (1 rows)\n  \"persistent atrial fibrillation\"  (1 rows)\n  \"permanent atrial fibrillation\"  (1 rows)\n  \"paroxysmal atrial fibrillation\"  (1 rows)\n  \"other persistent atrial fibrillation\"  (1 rows)\n  \"longstanding persistent atrial fibrillation\"  (1 rows)\n  \"chronic atrial fibrillation, unspecified\"  (1 rows)\n  \"chronic atrial fibrillation\"  (1 rows)\n  \"atrial fibrillation and flutter\"  (1 rows)\n  \"atrial fibrillation\"  (1 rows)",
+          "elapsed_ms": 170,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "run_query",
+          "args": {
+            "sql": "SELECT icd_code FROM d_icd_diagnoses WHERE long_title LIKE '%atrial fibrillation%'"
+          },
+          "ok": true,
+          "output": "11 row(s), 40 ms.\nicd_code\nicd9|42731\nicd10|i4820\nicd10|i482\nicd10|i48\nicd10|i4811\nicd10|i4891\nicd10|i489\nicd10|i4821\nicd10|i4819\nicd10|i480\nicd10|i481",
+          "elapsed_ms": 42,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "run_query",
+          "args": {
+            "sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)"
+          },
+          "ok": true,
+          "output": "1 row(s), 37 ms.\navg_stay_days\n4.091421441000421",
+          "elapsed_ms": 42,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "final_answer",
+          "args": {
+            "answer": "The average ICU stay for patients diagnosed with atrial fibrillation is approximately 4.09 days.",
+            "sql": "SELECT AVG(julianday(outtime) - julianday(intime)) AS avg_stay_days\nFROM icustays\nWHERE hadm_id IN (\n    SELECT hadm_id\n    FROM diagnoses_icd\n    WHERE icd_code IN (\n        SELECT icd_code\n        FROM d_icd_diagnoses\n        WHERE long_title LIKE '%atrial fibrillation%'\n    )\n)",
+            "status": "answered"
+          },
+          "ok": true,
+          "output": "Answer recorded.",
+          "elapsed_ms": 36,
+          "self_check": null
+        }
+      ],
+      "result": {
+        "columns": [
+          "avg_stay_days"
+        ],
+        "rows": [
+          [
+            4.091421441000421
+          ]
+        ],
+        "truncated": false
+      },
+      "tool_calls": 4,
+      "turns": 4,
+      "elapsed_s": 13.17,
+      "tokens": 29202,
+      "cost_usd": 0.00273,
+      "providers": [
+        "Venice"
+      ],
+      "error": null
+    },
+    {
+      "id": "phone",
+      "title": "Knowing when to say no",
+      "question": "What is the phone number of the doctor who treated patient 10004235?",
+      "status": "unanswerable",
+      "answer": "The database does not contain any information about doctors or their phone numbers.",
+      "sql": null,
+      "steps": [
+        {
+          "kind": "tool",
+          "tool": "list_tables",
+          "args": {},
+          "ok": true,
+          "output": "- admissions (119 rows): row_id, subject_id, hadm_id, admittime, dischtime, admission_type, admission_location, discharge_location, insurance, language, marital_status, age\n- chartevents (31,926 rows): row_id, subject_id, hadm_id, stay_id, itemid, charttime, valuenum, valueuom\n- cost (33,720 rows): row_id, subject_id, hadm_id, event_type, event_id, chargetime, cost\n- d_icd_diagnoses (106,308 rows): row_id, icd_code, long_title\n- d_icd_procedures (85,254 rows): row_id, icd_code, long_title\n- d_items (3,522 rows): row_id, itemid, label, abbreviation, linksto\n- d_labitems (1,594 rows): row_id, itemid, label\n- diagnoses_icd (1,561 rows): row_id, subject_id, hadm_id, icd_code, charttime\n- icustays (88 rows): row_id, subject_id, hadm_id, stay_id, first_careunit, last_careunit, intime, outtime\n- inputevents (9,000 rows): row_id, subject_id, hadm_id, stay_id, starttime, itemid, totalamount, totalamountuom\n- labevents (26,426 rows): row_id, subject_id, hadm_id, itemid, charttime, valuenum, valueuom\n- microbiologyevents (1,060 rows): row_id, subject_id, hadm_id, charttime, spec_type_desc, test_name, org_name\n- outputevents (5,292 rows): row_id, subject_id, hadm_id, stay_id, charttime, itemid, value, valueuom\n- patients (94 rows): row_id, subject_id, gender, dob, dod\n- prescriptions (5,354 rows): row_id, subject_id, hadm_id, starttime, stoptime, drug, dose_val_rx, dose_unit_rx, route\n- procedures_icd (379 rows): row_id, subject_id, hadm_id, icd_code, charttime\n- transfers (515 rows): row_id, subject_id, hadm_id, transfer_id, eventtype, careunit, intime, outtime",
+          "elapsed_ms": 0,
+          "self_check": null
+        },
+        {
+          "kind": "tool",
+          "tool": "final_answer",
+          "args": {
+            "answer": "The database does not contain any information about doctors or their phone numbers.",
+            "sql": null,
+            "status": "unanswerable"
+          },
+          "ok": true,
+          "output": "Answer recorded.",
+          "elapsed_ms": 0,
+          "self_check": null
+        }
+      ],
+      "result": null,
+      "tool_calls": 2,
+      "turns": 2,
+      "elapsed_s": 2.54,
+      "tokens": 14559,
+      "cost_usd": 0.00135,
+      "providers": [
+        "Venice"
+      ],
+      "error": null
+    }
+  ]
+}
